@@ -1,21 +1,42 @@
 node{
-   stage('SCM Checkout'){
-       git credentialsId: 'git', url: 'https://github.com/pramodmadhavanvc1/nodejs.git'
-   }
-   
-   stage('Docker build app image'){
-     sh 'ssh 10.0.2.8 "docker build -t pramodmadhavanvc1/nodejs:1.5 /git/docker/"'
-   }
-   
-   stage('Docker login and push to HUB'){
-     withCredentials([string(credentialsId: 'docker-hub-pramodmadhavan', variable: 'docker-hub-pramodmadhavan')]) {
-       sh "ssh 10.0.2.8 'docker login -u pramodmadhavan -p ${docker-hub-pramodmadhavan}'"
-   }
-     sh 'ssh 10.0.2.8 "docker push pramodmadhavanvc1/nodejs:1.5"'
-   }
-   
-   stage('creating POD on kube cluster'){
-     sh 'ssh root@10.0.2.4 "kubectl create -f /kubernetes/nodeapp-deployment.yaml"'
-     sh 'ssh root@10.0.2.4 "kubectl create -f /kubernetes/nodeapp-service.yaml"'
-   }
+    agent any
+    tools {
+      maven 'M2_HOME'
+    }
+    environment {
+      DOCKER_TAG = getVersion()
+    }
+
+    stages {
+        stage('SCM') {
+            steps{
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/pramodmadhavanvc1/jenkins-docker-example.git']]])
+
+             
+            }
+        }
+       stage('Maven Build'){
+           steps{
+               sh "mvn clean package"
+           }
+       }
+       stage('Docker Build'){
+           steps{
+               sh "docker build . -t pramodmadhavan/nodejsapp-1.0:${DOCKER_TAG} " 
+           }
+       }
+       stage('Dockerhub Push'){
+           steps{
+               withCredentials([string(credentialsId: 'docker-hub', variable: 'dockerHubPwd')]) {
+                   sh "docker login -u pramodmadhavan -p ${dockerHubPwd}"
+               }
+               
+               sh "docker push pramodmadhavan/nodejsapp-1.0:${DOCKER_TAG} " 
+           }
+       }   
+    }
+}
+def getVersion(){
+    def commitHash = sh returnStdout: true, script: 'git rev-parse --short HEAD'
+    return commitHash
 }
